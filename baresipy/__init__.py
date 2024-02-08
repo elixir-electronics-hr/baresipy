@@ -57,6 +57,7 @@ class BareSIP(Thread):
             with open(join(self.config_path, "config"), "w") as f:
                 f.write(self.config)
 
+        self.dontdie=dontdie
         self.debug = debug
         self.user = user
         self.pwd = pwd
