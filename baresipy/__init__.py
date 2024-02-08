@@ -181,10 +181,10 @@ class BareSIP(Thread):
         self.running = False
         self.current_call = None
         self._call_status = None
-        self.abort = True
         self.baresip.close()
+        self.baresip.kill(signal.SIGKILL)
         if (not self.dontdie):
-            self.baresip.kill(signal.SIGKILL)
+            self.abort = True
 
     def send_dtmf(self, number):
         number = str(number)
