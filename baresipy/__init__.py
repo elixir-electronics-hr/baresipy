@@ -21,7 +21,7 @@ logging.getLogger("pydub.converter").setLevel("WARN")
 
 class BareSIP(Thread):
     def __init__(self, user, pwd, gateway, tts=None, debug=False,
-                 block=True, config_path=None, sounds_path=None, mediaenc=None):
+                 block=True, config_path=None, sounds_path=None, mediaenc=None, dontdie=False):
         config_path = config_path or join("~", ".baresipy")
         self.config_path = expanduser(config_path)
         if not isdir(self.config_path):
@@ -182,7 +182,8 @@ class BareSIP(Thread):
         self._call_status = None
         self.abort = True
         self.baresip.close()
-        self.baresip.kill(signal.SIGKILL)
+        if (not self.dontdie):
+            self.baresip.kill(signal.SIGKILL)
 
     def send_dtmf(self, number):
         number = str(number)
