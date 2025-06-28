@@ -21,7 +21,7 @@ logging.getLogger("pydub.converter").setLevel("WARN")
 
 class BareSIP(Thread):
     def __init__(self, user, pwd, gateway, transport="udp", other_sip_configs="", tts=None, debug=False,
-                 block=True, config_path=None, sounds_path=None):
+                 block=True, config_path=None, sounds_path=None, auto_start_process=True):
         config_path = config_path or join("~", ".baresipy")
         self.config_path = expanduser(config_path)
         if not isdir(self.config_path):
@@ -62,13 +62,8 @@ class BareSIP(Thread):
         self.pwd = pwd
         self.gateway = gateway
         self.transport = transport
-        if tts:
-            self.tts = tts
-        else:
-            self.tts = ResponsiveVoice(gender=ResponsiveVoice.MALE)
-        self._login = "sip:{u}@{g};transport={t};auth_pass={p};{o};".format(
-            u=self.user, p=self.pwd, g=self.gateway, t=self.transport, o=other_sip_configs
-        ).replace(';;', ';').rstrip(';')
+        self.block = block
+        self.started_once = False
         self._prev_output = ""
         self.running = False
         self.ready = False
@@ -78,10 +73,28 @@ class BareSIP(Thread):
         self._call_status = None
         self.audio = None
         self._ts = None
+        self.baresip = None
+
+        if tts:
+            self.tts = tts
+        else:
+            self.tts = ResponsiveVoice(gender=ResponsiveVoice.MALE)
+        self._login = "sip:{u}@{g};transport={t};auth_pass={p};{o};".format(
+            u=self.user, p=self.pwd, g=self.gateway, t=self.transport, o=other_sip_configs
+        ).replace(';;', ';').rstrip(';')
+
+        if auto_start_process:
+            self.start_process()
+
+    def start_process(self):
+        if self.started_once:
+            LOG.error('Python Thread Instance cannot be started more than once. Please create a new BareSIP instance')
+            return
+        self.started_once = True
         self.baresip = pexpect.spawn('baresip -f ' + self.config_path)
         super().__init__()
         self.start()
-        if block:
+        if self.block:
             self.wait_until_ready()
 
     # properties
@@ -172,17 +185,22 @@ class BareSIP(Thread):
             LOG.info("restoring original config")
             with open(join(self.config_path, "config"), "w") as f:
                 f.write(self._original_config)
-        LOG.info("Exiting")
-        if self.running:
+
+        if self.running or (self.baresip != None and self.baresip.isalive()):
+            LOG.info("Closing BareSIP instance")
             if self.current_call:
                 self.hang()
-            self.baresip.sendline("/quit")
-        self.running = False
-        self.current_call = None
-        self._call_status = None
-        self.abort = True
-        self.baresip.close()
-        self.baresip.kill(signal.SIGKILL)
+            
+            if self.baresip.isalive():
+                LOG.info("Killing BareSip process")
+                self.baresip.sendline("/quit")
+                self.baresip.close()
+                self.baresip.kill(signal.SIGKILL)
+
+            self.current_call = None
+            self._call_status = None
+            self.abort = True
+            self.running = False
 
     def send_dtmf(self, number):
         number = str(number)
