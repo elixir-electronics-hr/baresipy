@@ -173,7 +173,8 @@ class BareSIP(Thread):
         self._login_retry_count = 0
         self.audio_frame_rate = audio_frame_rate
         self.audio_channels = audio_channels
-        self.baresip = pexpect.spawn(_find_baresip_binary() + ' -f ' + self.config_path)
+        self.baresip = None
+        self.startBareSIPSubProcess()
         super().__init__()
         if autostart:
             self.start()
@@ -216,6 +217,10 @@ class BareSIP(Thread):
             return
         LOG.info("Adding account: " + str(self.user))
         self.baresip.sendline("/uanew " + self._login)
+    
+    def logout(self):
+        LOG.info("Removing account: " + self.user)
+        self.baresip.sendline("/uadelall")
 
     def call(self, number: str) -> None:
         if number.startswith("sip:"):
@@ -335,6 +340,18 @@ class BareSIP(Thread):
         self.do_command("/callstat")
         sleep(0.1)
         return self.call_status
+    
+    def killBareSIPSubProcess(self):
+        if self.baresip != None and self.baresip.isalive():
+            LOG.info("Killing BareSip process")
+            self.baresip.sendline("/quit")
+            self.baresip.close()
+            self.baresip.kill(signal.SIGKILL)
+        self.baresip = None # this would prompt the run() loop to call startBareSIPProcess
+    
+    def startBareSIPSubProcess(self):
+        LOG.info("Starting BareSip process")
+        self.baresip = pexpect.spawn('baresip -f ' + self.config_path)
 
     def quit(self) -> None:
         if not self.running and self.abort:
@@ -348,22 +365,49 @@ class BareSIP(Thread):
         if self.running:
             if self.current_call:
                 self.hang()
-            try:
-                self.baresip.sendline("/quit")
-            except Exception as e:
-                LOG.warning(f"failed to send /quit: {e}")
         self.running = False
         self.current_call = None
         self._call_status = None
         self.abort = True
-        try:
-            self.baresip.close()
-        except Exception as e:
-            LOG.warning(f"failed to close baresip process: {e}")
-        try:
-            self.baresip.kill(signal.SIGKILL)
-        except Exception as e:
-            LOG.debug(f"baresip process already dead: {e}")
+        self.killBareSIPSubProcess()
+
+    def logout(self) -> None:
+        """Remove every account from the running baresip.
+
+        The phone re-registers by building a fresh account rather than by
+        waiting for baresip to retry, so the old one has to go first or
+        baresip ends up with two.
+        """
+        LOG.info("Removing account: " + str(self.user))
+        self.baresip.sendline("/uadelall")
+
+    def killBareSIPSubProcess(self) -> None:
+        """Stop the baresip process, leaving this object able to start another.
+
+        Setting self.baresip back to None is what tells run() to spawn a
+        replacement. Every step is guarded because this is called on the way
+        out of an already-failing situation as often as not.
+        """
+        if self.baresip is not None and self.baresip.isalive():
+            LOG.info("Killing BareSip process")
+            try:
+                self.baresip.sendline("/quit")
+            except Exception as e:
+                LOG.warning(f"failed to send /quit: {e}")
+            try:
+                self.baresip.close()
+            except Exception as e:
+                LOG.warning(f"failed to close baresip process: {e}")
+            try:
+                self.baresip.kill(signal.SIGKILL)
+            except Exception as e:
+                LOG.debug(f"baresip process already dead: {e}")
+        self.baresip = None
+
+    def startBareSIPSubProcess(self) -> None:
+        LOG.info("Starting BareSip process")
+        self.baresip = pexpect.spawn(
+            _find_baresip_binary() + ' -f ' + self.config_path)
 
     def send_dtmf(self, number: Union[str, int],
                   mode: str = "audio") -> None:
@@ -786,6 +830,14 @@ class BareSIP(Thread):
         self.running = True
         while self.running:
             try:
+                if self.baresip == None:
+                    self.startBareSIPSubProcess()
+                    continue
+                if not self.baresip.isalive():
+                    self.killBareSIPSubProcess()
+                    sleep(0.5)
+                    continue
+
                 out = self.baresip.readline().decode("utf-8")
 
                 if out != self._prev_output:
@@ -810,6 +862,9 @@ class BareSIP(Thread):
                 # nothing happened for a while
                 pass
             except KeyboardInterrupt:
+                self.running = False
+            except:
+                # Uncaught Exception. Gracefully quit
                 self.running = False
 
         self.quit()
