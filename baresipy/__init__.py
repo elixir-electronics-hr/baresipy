@@ -91,7 +91,6 @@ class BareSIP(Thread):
             LOG.error('Python Thread Instance cannot be started more than once. Please create a new BareSIP instance')
             return
         self.started_once = True
-        self.baresip = pexpect.spawn('baresip -f ' + self.config_path)
         super().__init__()
         self.start()
         if self.block:
@@ -118,6 +117,10 @@ class BareSIP(Thread):
     def login(self):
         LOG.info("Adding account: " + self.user)
         self.baresip.sendline("/uanew " + self._login)
+    
+    def logout(self):
+        LOG.info("Removing account: " + self.user)
+        self.baresip.sendline("/uadelall")
 
     def call(self, number):
         LOG.info("Dialling: " + number)
@@ -179,24 +182,30 @@ class BareSIP(Thread):
         self.do_command("/callstat")
         sleep(0.1)
         return self.call_status
+    
+    def killBareSIPSubProcess(self):
+        if self.baresip != None and self.baresip.isalive():
+            LOG.info("Killing BareSip process")
+            self.baresip.sendline("/quit")
+            self.baresip.close()
+            self.baresip.kill(signal.SIGKILL)
+        self.baresip = None # this would prompt the run() loop to call startBareSIPProcess
+    
+    def startBareSIPSubProcess(self):
+        LOG.info("Starting BareSip process")
+        self.baresip = pexpect.spawn('baresip -f ' + self.config_path)
 
     def quit(self):
         if self.updated_config:
             LOG.info("restoring original config")
             with open(join(self.config_path, "config"), "w") as f:
                 f.write(self._original_config)
-
-        if self.running or (self.baresip != None and self.baresip.isalive()):
-            LOG.info("Closing BareSIP instance")
+        LOG.info("Closing BareSIP instance")
+        if self.running:
             if self.current_call:
                 self.hang()
-            
-            if self.baresip.isalive():
-                LOG.info("Killing BareSip process")
-                self.baresip.sendline("/quit")
-                self.baresip.close()
-                self.baresip.kill(signal.SIGKILL)
 
+            self.killBareSIPSubProcess()
             self.current_call = None
             self._call_status = None
             self.abort = True
@@ -353,6 +362,14 @@ class BareSIP(Thread):
         self.running = True
         while self.running:
             try:
+                if self.baresip == None:
+                    self.startBareSIPSubProcess()
+                    continue
+                if not self.baresip.isalive():
+                    self.killBareSIPSubProcess()
+                    sleep(0.5)
+                    continue
+
                 out = self.baresip.readline().decode("utf-8")
 
                 if out != self._prev_output:
@@ -463,6 +480,9 @@ class BareSIP(Thread):
                 # nothing happened for a while
                 pass
             except KeyboardInterrupt:
+                self.running = False
+            except:
+                # Uncaught Exception. Gracefully quit
                 self.running = False
 
         self.quit()
