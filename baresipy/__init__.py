@@ -217,10 +217,6 @@ class BareSIP(Thread):
             return
         LOG.info("Adding account: " + str(self.user))
         self.baresip.sendline("/uanew " + self._login)
-    
-    def logout(self):
-        LOG.info("Removing account: " + self.user)
-        self.baresip.sendline("/uadelall")
 
     def call(self, number: str) -> None:
         if number.startswith("sip:"):
@@ -340,18 +336,6 @@ class BareSIP(Thread):
         self.do_command("/callstat")
         sleep(0.1)
         return self.call_status
-    
-    def killBareSIPSubProcess(self):
-        if self.baresip != None and self.baresip.isalive():
-            LOG.info("Killing BareSip process")
-            self.baresip.sendline("/quit")
-            self.baresip.close()
-            self.baresip.kill(signal.SIGKILL)
-        self.baresip = None # this would prompt the run() loop to call startBareSIPProcess
-    
-    def startBareSIPSubProcess(self):
-        LOG.info("Starting BareSip process")
-        self.baresip = pexpect.spawn('baresip -f ' + self.config_path)
 
     def quit(self) -> None:
         if not self.running and self.abort:
@@ -684,7 +668,12 @@ class BareSIP(Thread):
                 self.ready = True
         elif "account: No SIP accounts found" in out:
             self._handle_no_accounts()
-        elif "All 1 useragent registered successfully!" in out:
+        elif "200 OK" in out:
+            # baresip prints "All 1 useragent registered successfully!" only on
+            # the FIRST successful registration. Every later one - after a
+            # network drop, or the periodic re-REGISTER - reports success as a
+            # bare 200 OK, so keying on the friendlier line leaves the phone
+            # looking permanently disconnected after its first reconnect.
             self.ready = True
             self._login_retry_count = 0
             self.handle_login_success()
@@ -830,7 +819,10 @@ class BareSIP(Thread):
         self.running = True
         while self.running:
             try:
-                if self.baresip == None:
+                # A baresip that died takes the phone with it unless something
+                # puts it back. killBareSIPSubProcess() clears self.baresip,
+                # which is the signal to spawn a replacement on the next pass.
+                if self.baresip is None:
                     self.startBareSIPSubProcess()
                     continue
                 if not self.baresip.isalive():
@@ -863,8 +855,11 @@ class BareSIP(Thread):
                 pass
             except KeyboardInterrupt:
                 self.running = False
-            except:
-                # Uncaught Exception. Gracefully quit
+            except Exception as e:
+                # Anything not handled above. Stop rather than spin: this loop
+                # is the phone, and a tight loop on a repeating error is worse
+                # than a clean exit that systemd restarts.
+                LOG.exception(f"unhandled error in baresip loop: {e}")
                 self.running = False
 
         self.quit()
