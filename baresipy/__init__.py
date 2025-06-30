@@ -79,8 +79,9 @@ class BareSIP(Thread):
             self.tts = tts
         else:
             self.tts = ResponsiveVoice(gender=ResponsiveVoice.MALE)
-        self._login = "sip:{u}@{g};transport={t};auth_pass={p};{o};".format(
-            u=self.user, p=self.pwd, g=self.gateway, t=self.transport, o=other_sip_configs
+        self._server = "sip:{u}@{g}".format(u=self.user, g=self.gateway)
+        self._login = self._server + ";transport={t};auth_pass={p};{o};".format(
+            p=self.pwd, t=self.transport, o=other_sip_configs
         ).replace(';;', ';').rstrip(';')
 
         if auto_start_process:
@@ -380,7 +381,8 @@ class BareSIP(Thread):
                         self.handle_ready()
                     elif "account: No SIP accounts found" in out:
                         self._handle_no_accounts()
-                    elif "All 1 useragent registered successfully!" in out:
+                    # elif "All 1 useragent registered successfully!" in out or\
+                    elif "200 OK" in out:
                         self.ready = True
                         self.handle_login_success()
                     elif "ua: SIP register failed:" in out or\
