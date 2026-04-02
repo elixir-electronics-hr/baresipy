@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "baresipy"
+dynamic = ["version"]
+description = "python baresip wrapper"
+license = {text = "MIT"}
+authors = [{name = "JarbasAI", email = "jarbasai@mailfence.com"}]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "ResponsiveVoice",
+    "opentone>=0.1.2",
+    "pydub",
+    "pexpect",
+]
+
+[project.urls]
+Homepage = "https://github.com/JarbasAl/baresipy"
+
+[tool.setuptools.dynamic]
+version = {attr = "baresipy.version.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["."]
