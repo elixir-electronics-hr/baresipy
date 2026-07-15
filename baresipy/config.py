@@ -1,3 +1,6 @@
+from os.path import isdir
+from typing import Optional
+
 DEFAULT = """#
 # baresip configuration
 #
@@ -214,3 +217,58 @@ ice_mode		full	# {full,lite}
 #redial_delay		5 # Delay in seconds
 #ringback_disabled	yes
 #statmode_default	off"""
+
+
+def render_config(audio_driver: str = "alsa,default",
+                   headless: bool = False,
+                   audio_path: Optional[str] = None) -> str:
+    """Render a baresip config file from the DEFAULT template.
+
+    :param audio_driver: value passed to `audio_source`/`audio_player`/
+        `audio_alert` when not headless, eg "alsa,default" or "pulse,default"
+    :param headless: if True, do not load any real sound hardware modules
+        (alsa.so/pulse.so). Instead use `ausine.so` as the audio source and
+        `aufile.so` for playback, so baresip can run without any sound card
+        present (see github issues #16/#17)
+    :param audio_path: if a directory, patch `audio_path` to point at it; if
+        False-y but not None, disable sound file loading entirely
+    """
+    config = DEFAULT
+
+    if headless:
+        config = config.replace(
+            "audio_player		alsa,default",
+            "audio_player		aufile,/dev/null")
+        config = config.replace(
+            "audio_source		alsa,default",
+            "audio_source		ausine,400")
+        config = config.replace(
+            "audio_alert		alsa,default",
+            "audio_alert		aufile,/dev/null")
+        config = config.replace(
+            "module			alsa.so\nmodule			pulse.so",
+            "#module			alsa.so\n#module			pulse.so")
+        if "module			ausine.so" not in config:
+            config = config.replace(
+                "module			aufile.so\n",
+                "module			aufile.so\nmodule			ausine.so\n", 1)
+    else:
+        config = config.replace("audio_player		alsa,default",
+                                 "audio_player		" + audio_driver)
+        config = config.replace("audio_source		alsa,default",
+                                 "audio_source		" + audio_driver)
+        config = config.replace("audio_alert		alsa,default",
+                                 "audio_alert		" + audio_driver)
+
+    if audio_path is not None and "#audio_path" in config:
+        if audio_path is False:
+            # sounds disabled
+            config = config.replace(
+                "#audio_path		/usr/share/baresip",
+                "audio_path		/dont/load")
+        elif audio_path and isdir(audio_path):
+            config = config.replace(
+                "#audio_path		/usr/share/baresip",
+                "audio_path		" + audio_path)
+
+    return config
