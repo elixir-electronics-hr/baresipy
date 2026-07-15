@@ -14,6 +14,7 @@ dependencies = [
     "ResponsiveVoice",
     "opentone>=0.1.2",
     "pydub",
+    "audioop-lts; python_version >= '3.13'",
     "pexpect",
     "json_database>=0.1.2",
 ]
