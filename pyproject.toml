@@ -22,12 +22,24 @@ dependencies = [
 test = [
     "pytest",
     "pytest-cov",
+    "fastapi",
+    "httpx",
+    "python-multipart",
+    "uvicorn",
 ]
 ovos = [
     "ovos-plugin-manager",
     "phoonnx",
     "ovos-simple-listener",
 ]
+server = [
+    "fastapi",
+    "uvicorn",
+    "python-multipart",
+]
+
+[project.scripts]
+baresipy-gateway = "baresipy.server:main"
 
 [project.urls]
 Homepage = "https://github.com/TigreGotico/baresipy"

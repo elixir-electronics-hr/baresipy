@@ -24,7 +24,8 @@ Optional extras:
 | extra | installs | needed for |
 |---|---|---|
 | `baresipy[ovos]` | `ovos-plugin-manager`, `phoonnx`, `ovos-simple-listener` | `speak()`/`say()` default TTS engine, `baresipy.ovos.BareSIPMicrophone`, voice bots |
-| `baresipy[test]` | `pytest`, `pytest-cov` | running the test suite |
+| `baresipy[server]` | `fastapi`, `uvicorn`, `python-multipart` | `baresipy-gateway` HTTP/WebSocket API, see [docs/http-gateway.md](docs/http-gateway.md) |
+| `baresipy[test]` | `pytest`, `pytest-cov`, `fastapi`, `httpx`, `python-multipart`, `uvicorn` | running the test suite |
 
 ## Quickstart
 
@@ -128,6 +129,7 @@ See [docs/ovos-integration.md](docs/ovos-integration.md) for the complete walkth
 - [docs/configuration.md](docs/configuration.md) — config directory, `render_config`, full `BareSIP` constructor reference
 - [docs/direct-calls.md](docs/direct-calls.md) — registrar-less/direct SIP mode
 - [docs/ovos-integration.md](docs/ovos-integration.md) — building a full OVOS voice bot
+- [docs/http-gateway.md](docs/http-gateway.md) — driving baresipy over HTTP/WebSocket via `baresipy-gateway`
 - [docs/docker.md](docs/docker.md) — container image usage and the e2e rig
 - [docs/testing.md](docs/testing.md) — running and writing tests
 
