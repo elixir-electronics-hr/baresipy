@@ -25,7 +25,8 @@ test = [
 ]
 ovos = [
     "ovos-plugin-manager",
-    "ovos-tts-plugin-phoonnx",
+    "phoonnx",
+    "ovos-simple-listener",
 ]
 
 [project.urls]

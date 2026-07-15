@@ -49,5 +49,23 @@ class TestRenderConfig(unittest.TestCase):
         self.assertIn("#audio_path\t\t/usr/share/baresip", config)
 
 
+class TestRenderConfigSndfile(unittest.TestCase):
+    def test_sndfile_disabled_by_default(self):
+        config = render_config()
+        self.assertIn("#module\t\t\tsndfile.so", config)
+        self.assertNotIn("\nmodule\t\t\tsndfile.so\n", config)
+        self.assertNotIn("snd_path", config)
+
+    def test_sndfile_enabled(self):
+        config = render_config(enable_sndfile=True, snd_path="/tmp/rec")
+        self.assertIn("module\t\t\tsndfile.so", config)
+        self.assertNotIn("#module\t\t\tsndfile.so", config)
+        self.assertIn("snd_path\t\t/tmp/rec", config)
+
+    def test_sndfile_enabled_requires_snd_path(self):
+        with self.assertRaises(ValueError):
+            render_config(enable_sndfile=True)
+
+
 if __name__ == "__main__":
     unittest.main()
