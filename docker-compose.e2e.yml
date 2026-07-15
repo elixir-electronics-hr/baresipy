@@ -1,0 +1,44 @@
+version: "3.8"
+
+# Two registrar-less headless baresip instances calling each other directly
+# by SIP URI, over a private compose network - no SIP registrar/proxy
+# involved. `callee` auto-accepts and echoes DTMF "42"; `caller` dials,
+# sends DTMF "7" + a sine-wave wav, then writes results.json to /shared for
+# test/e2e/test_call.py to assert on.
+#
+# Run directly with:
+#   docker compose -f docker-compose.e2e.yml up --build \
+#       --abort-on-container-exit --exit-code-from caller
+# or via `pytest test/ -m e2e` (test/e2e/test_call.py drives the same
+# command, using a temp dir bind-mounted at /shared).
+
+services:
+  callee:
+    build:
+      context: .
+      args:
+        INSTALL_EXTRAS: ""
+    command: ["python", "test/e2e/callee.py"]
+    working_dir: /app
+    volumes:
+      - ${E2E_SHARED_DIR:-./.e2e_shared}:/shared
+    networks:
+      - e2e
+
+  caller:
+    build:
+      context: .
+      args:
+        INSTALL_EXTRAS: ""
+    command: ["python", "test/e2e/caller.py"]
+    working_dir: /app
+    depends_on:
+      - callee
+    volumes:
+      - ${E2E_SHARED_DIR:-./.e2e_shared}:/shared
+    networks:
+      - e2e
+
+networks:
+  e2e:
+    driver: bridge
