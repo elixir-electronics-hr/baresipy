@@ -1,4 +1,5 @@
-from time import sleep
+from time import sleep, time as _time
+import glob
 import pexpect
 from opentone import ToneGenerator
 from pydub import AudioSegment
@@ -9,8 +10,9 @@ from threading import Thread
 from typing import Optional, Tuple, Union
 from baresipy.utils.log import LOG
 from baresipy.tts import get_default_tts
-from baresipy.config import render_config
-from os.path import expanduser, join, isfile, isdir
+from baresipy.config import render_config, ensure_sndfile_recording
+from baresipy.audio import WavTailReader
+from os.path import expanduser, join, isfile, isdir, getmtime
 from os import makedirs
 import signal
 import re
@@ -28,13 +30,23 @@ class BareSIP(Thread):
                  autostart: bool = True,
                  login_options: Optional[str] = None,
                  headless: bool = False,
-                 audio_driver: str = "alsa,default"):
+                 audio_driver: str = "alsa,default",
+                 record_rx: bool = False,
+                 recording_path: Optional[str] = None):
         config_path = config_path or join("~", ".baresipy")
         self.config_path = expanduser(config_path)
         if not isdir(self.config_path):
             makedirs(self.config_path)
 
         self._default_ausrc = "ausine,400" if headless else audio_driver
+
+        self.record_rx = record_rx
+        self.recording_path = None
+        if record_rx:
+            self.recording_path = recording_path or \
+                tempfile.mkdtemp(dir=tempfile.gettempdir())
+            if not isdir(self.recording_path):
+                makedirs(self.recording_path)
 
         if isfile(join(self.config_path, "config")):
             with open(join(self.config_path, "config"), "r") as f:
@@ -47,6 +59,14 @@ class BareSIP(Thread):
             self.updated_config = True
 
         self._original_config = str(self.config)
+
+        if record_rx:
+            # ensure the two sndfile config lines are present regardless of
+            # whether self.config came from render_config or an existing
+            # user-provided config file
+            self.config = ensure_sndfile_recording(self.config,
+                                                     self.recording_path)
+            self.updated_config = True
 
         if sounds_path is not None and "#audio_path" in self.config:
             self.updated_config = True
@@ -186,6 +206,41 @@ class BareSIP(Thread):
         status = "ESTABLISHED"
         self.handle_call_status(status)
         self._call_status = status
+
+    def get_rx_wav(self, timeout: float = 10.0) -> Optional[str]:
+        """Return the path to the newest received-audio wav recording
+        (`*-dec.wav`, ie what the peer said) written by baresip's sndfile
+        module, waiting up to `timeout` seconds for one to appear.
+
+        Requires `record_rx=True` to have been set at construction time.
+        """
+        if not self.recording_path:
+            LOG.error("recording not enabled, pass record_rx=True")
+            return None
+        pattern = join(self.recording_path, "*-dec.wav")
+        deadline = None
+        while True:
+            matches = glob.glob(pattern)
+            if matches:
+                return max(matches, key=getmtime)
+            if deadline is None:
+                deadline = _time() + timeout
+            if _time() >= deadline:
+                return None
+            sleep(0.1)
+
+    def get_rx_stream(self, timeout: float = 10.0) -> Optional[WavTailReader]:
+        """Return a `WavTailReader` tailing the newest received-audio wav
+        recording, or None if no such recording appeared within `timeout`
+        seconds.
+        """
+        wav = self.get_rx_wav(timeout)
+        if not wav:
+            return None
+        try:
+            return WavTailReader(wav, timeout=timeout)
+        except TimeoutError:
+            return None
 
     def list_calls(self) -> None:
         self.do_command("/listcalls")

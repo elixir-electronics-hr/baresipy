@@ -1,5 +1,6 @@
 from os.path import isdir
 from typing import Optional
+import re
 
 DEFAULT = """#
 # baresip configuration
@@ -219,9 +220,38 @@ ice_mode		full	# {full,lite}
 #statmode_default	off"""
 
 
+def ensure_sndfile_recording(config: str, snd_path: str) -> str:
+    """Ensure `module sndfile.so` is active and `snd_path` is set in a
+    rendered (or user-provided) baresip config text blob.
+
+    Works whether `config` came from `render_config` or was loaded from an
+    existing config file, by patching the text directly.
+
+    :param config: baresip config file contents
+    :param snd_path: directory where call recordings should be written
+    """
+    if "#module			sndfile.so" in config:
+        config = config.replace(
+            "#module			sndfile.so", "module			sndfile.so")
+    elif "module			sndfile.so" not in config:
+        config = config.replace(
+            "module			vumeter.so",
+            "module			vumeter.so\nmodule			sndfile.so", 1)
+
+    if "snd_path" in config:
+        config = re.sub(r"^snd_path\s+.*$", "snd_path\t\t" + snd_path,
+                         config, flags=re.MULTILINE)
+    else:
+        config += "\nsnd_path\t\t" + snd_path + "\n"
+
+    return config
+
+
 def render_config(audio_driver: str = "alsa,default",
                    headless: bool = False,
-                   audio_path: Optional[str] = None) -> str:
+                   audio_path: Optional[str] = None,
+                   enable_sndfile: bool = False,
+                   snd_path: Optional[str] = None) -> str:
     """Render a baresip config file from the DEFAULT template.
 
     :param audio_driver: value passed to `audio_source`/`audio_player`/
@@ -232,6 +262,10 @@ def render_config(audio_driver: str = "alsa,default",
         present (see github issues #16/#17)
     :param audio_path: if a directory, patch `audio_path` to point at it; if
         False-y but not None, disable sound file loading entirely
+    :param enable_sndfile: if True, activate the `sndfile.so` module so
+        baresip records call audio (rx/tx wav files) into `snd_path`
+    :param snd_path: directory to write call recordings into, required if
+        `enable_sndfile` is True
     """
     config = DEFAULT
 
@@ -270,5 +304,10 @@ def render_config(audio_driver: str = "alsa,default",
             config = config.replace(
                 "#audio_path		/usr/share/baresip",
                 "audio_path		" + audio_path)
+
+    if enable_sndfile:
+        if not snd_path:
+            raise ValueError("snd_path is required when enable_sndfile=True")
+        config = ensure_sndfile_recording(config, snd_path)
 
     return config
