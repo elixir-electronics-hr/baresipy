@@ -26,3 +26,4 @@ while b.running:
         # b.send_audio(audio)
         b.hang()
         b.quit()
+        break

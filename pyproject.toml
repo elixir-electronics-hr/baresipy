@@ -9,16 +9,23 @@ description = "python baresip wrapper"
 license = {text = "MIT"}
 authors = [{name = "JarbasAI", email = "jarbasai@mailfence.com"}]
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "ResponsiveVoice",
     "opentone>=0.1.2",
     "pydub",
     "pexpect",
+    "json_database>=0.1.2",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-cov",
 ]
 
 [project.urls]
-Homepage = "https://github.com/JarbasAl/baresipy"
+Homepage = "https://github.com/TigreGotico/baresipy"
 
 [tool.setuptools.dynamic]
 version = {attr = "baresipy.version.__version__"}
