@@ -14,8 +14,23 @@ from baresipy.config import render_config, ensure_sndfile_recording
 from baresipy.audio import WavTailReader
 from os.path import expanduser, join, isfile, isdir, getmtime
 from os import makedirs
+from shutil import which
 import signal
 import re
+
+
+def _find_baresip_binary() -> str:
+    """Resolve the baresip executable to run.
+
+    Prefers the self-contained binary shipped by the optional
+    ``baresip-binary`` package (no system ``baresip`` install required);
+    falls back to a system-installed ``baresip`` on PATH.
+    """
+    try:
+        from baresip_binary import BARESIP_BIN
+        return BARESIP_BIN
+    except ImportError:
+        return which("baresip") or "baresip"
 
 logging.getLogger("urllib3.connectionpool").setLevel("WARN")
 logging.getLogger("pydub.converter").setLevel("WARN")
@@ -111,7 +126,7 @@ class BareSIP(Thread):
         self.audio = None
         self._ts = None
         self._block_until_ready = block
-        self.baresip = pexpect.spawn('baresip -f ' + self.config_path)
+        self.baresip = pexpect.spawn(_find_baresip_binary() + ' -f ' + self.config_path)
         super().__init__()
         if autostart:
             self.start()
