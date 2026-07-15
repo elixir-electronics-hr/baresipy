@@ -6,11 +6,11 @@ test/e2e/test_call.py asserts on.
 
 Run inside the `caller` service of docker-compose.e2e.yml.
 """
+import os
 import sys
 import time
 from os.path import getsize, join
 
-from pydub import AudioSegment
 from pydub.generators import Sine
 
 from _common import SHARED, write_status, write_json, \
@@ -19,7 +19,7 @@ from _common import SHARED, write_status, write_json, \
 from baresipy import BareSIP
 
 CONFIG_PATH = "/root/.baresipy_caller"
-CALLEE_URI = "sip:anything@callee:5060"
+CALLEE_URI = os.environ.get("CALLEE_URI", "sip:callee@172.31.99.10:5060")
 
 
 class Caller(BareSIP):
@@ -64,7 +64,7 @@ def main() -> int:
         "rx_rms": None,
     }
 
-    bs = Caller(headless=True, record_rx=True,
+    bs = Caller(user="caller", headless=True, record_rx=True,
                 recording_path=join(SHARED, "caller_rx"),
                 config_path=CONFIG_PATH, autostart=True, block=True)
 
@@ -79,7 +79,7 @@ def main() -> int:
             time.sleep(0.2)
 
         if bs.call_established:
-            bs.send_dtmf("7")
+            bs.send_dtmf("7", mode="keys")
             write_status("caller", "sent dtmf 7")
             sine = make_sine_wav()
             bs.send_audio(sine)
@@ -95,11 +95,19 @@ def main() -> int:
         if rx_wav:
             results["rx_wav_size"] = getsize(rx_wav)
             try:
-                seg = AudioSegment.from_wav(rx_wav)
-                results["rx_rms"] = seg.rms
+                # sndfile only finalizes the wav header size fields when
+                # the file is closed, so read the raw PCM past the header
+                # instead of trusting them
+                import struct
+                with open(rx_wav, "rb") as f:
+                    raw = f.read()[44:]
+                n = len(raw) // 2
+                samples = struct.unpack("<%dh" % n, raw[:n * 2])
+                rms = int((sum(s * s for s in samples) / max(1, n)) ** 0.5)
+                results["rx_rms"] = rms
                 # a genuinely silent capture has rms ~0; a real
                 # (encoded/decoded, possibly noisy) tone leg does not
-                results["rx_non_silent"] = seg.rms > 50
+                results["rx_non_silent"] = rms > 50
             except Exception as e:
                 write_status("caller", "failed to analyze rx wav: " + str(e))
 

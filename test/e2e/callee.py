@@ -36,7 +36,7 @@ class Callee(BareSIP):
     def _send_dtmf_later(self) -> None:
         time.sleep(2)
         if self.call_established:
-            self.send_dtmf("42")
+            self.send_dtmf("42", mode="keys")
             write_status("callee", "sent dtmf 42")
 
     def handle_dtmf_received(self, char: str, duration: int) -> None:
@@ -52,7 +52,7 @@ def main() -> None:
     headless_config_with_sip_listen(CONFIG_PATH)
     write_status("callee", "starting")
 
-    bs = Callee(headless=True, record_rx=True,
+    bs = Callee(user="callee", headless=True, record_rx=True,
                 recording_path=join(SHARED, "callee_rx"),
                 config_path=CONFIG_PATH, autostart=True, block=True)
     write_status("callee", "spawned and ready for instructions")
