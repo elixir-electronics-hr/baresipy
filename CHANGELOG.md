@@ -1,8 +1,8 @@
 # Changelog
 
-## [0.0.1a1](https://github.com/TigreGotico/baresipy/tree/0.0.1a1) (2026-07-15)
+## [0.0.1a2](https://github.com/TigreGotico/baresipy/tree/0.0.1a2) (2026-07-15)
 
-[Full Changelog](https://github.com/TigreGotico/baresipy/compare/209742d767fc2b7ae2c705ac1ecc03e3ada34186...0.0.1a1)
+[Full Changelog](https://github.com/TigreGotico/baresipy/compare/0.0.1a1...0.0.1a2)
 
 **Merged pull requests:**
 
@@ -11,6 +11,10 @@
 - Command to manage unhandled output [\#11](https://github.com/TigreGotico/baresipy/pull/11) ([nick-traeger](https://github.com/nick-traeger))
 - enable incomming dtmf parsing [\#10](https://github.com/TigreGotico/baresipy/pull/10) ([danielkucera](https://github.com/danielkucera))
 - Update login command formatting [\#1](https://github.com/TigreGotico/baresipy/pull/1) ([NeonDaniel](https://github.com/NeonDaniel))
+
+## [0.0.1a1](https://github.com/TigreGotico/baresipy/tree/0.0.1a1) (2026-07-15)
+
+[Full Changelog](https://github.com/TigreGotico/baresipy/compare/209742d767fc2b7ae2c705ac1ecc03e3ada34186...0.0.1a1)
 
 
 
