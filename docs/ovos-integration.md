@@ -131,3 +131,9 @@ than on wideband calls. There is inherent latency in the pipeline: baresip must 
 each frame to the `sndfile` recording, `WavTailReader` polls for new bytes, and STT/VAD run on
 buffered chunks rather than a true low-latency stream — expect turn-taking on the order of
 seconds, not milliseconds, which is normal for this architecture.
+
+## See also
+
+[docs/http-gateway.md](http-gateway.md) exposes a `BareSIP` phone over HTTP/WebSocket instead of
+embedding it directly in a python process — its `/ws/audio` route streams the same resampled
+16kHz mono PCM audio `BareSIPMicrophone` reads internally, for consumers outside this process.
