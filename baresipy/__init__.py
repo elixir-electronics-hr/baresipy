@@ -101,6 +101,7 @@ class BareSIP(Thread):
             if login_options:
                 self._login += ";{o}".format(o=login_options)
         self._prev_output = ""
+        self._local_ua_added = False
         self.running = False
         self.ready = False
         self.mic_muted = False
@@ -141,7 +142,15 @@ class BareSIP(Thread):
 
     def login(self) -> None:
         if not self._login:
-            LOG.debug("no gateway configured, skipping registration")
+            # registrar-less mode still needs a local (non-registering)
+            # user agent, or baresip can not place or receive calls
+            if self._local_ua_added:
+                return
+            self._local_ua_added = True
+            local_aor = "sip:{u}@0.0.0.0;regint=0".format(
+                u=self.user or "baresipy")
+            LOG.info("Adding local account: " + local_aor)
+            self.baresip.sendline("/uanew " + local_aor)
             return
         LOG.info("Adding account: " + str(self.user))
         self.baresip.sendline("/uanew " + self._login)
@@ -279,12 +288,30 @@ class BareSIP(Thread):
         except Exception as e:
             LOG.debug(f"baresip process already dead: {e}")
 
-    def send_dtmf(self, number: Union[str, int]) -> None:
+    def send_dtmf(self, number: Union[str, int],
+                  mode: str = "audio") -> None:
+        """Send DTMF digits into the active call.
+
+        :param mode: "audio" synthesizes in-band DTMF tones and streams
+            them as call audio (audible, but not decoded as DTMF events by
+            SIP peers). "keys" presses the digit keys on the baresip
+            console, which sends real RTP telephone-events (RFC 4733) the
+            peer reports as DTMF.
+        """
         number = str(number)
         for n in number:
-            if n not in "0123456789":
+            if n not in "0123456789*#":
                 LOG.error("invalid dtmf tone")
                 return
+        if mode == "keys":
+            if not self.call_established:
+                LOG.error("Can't send DTMF without an active call!")
+                return
+            LOG.info("Sending dtmf telephone-events for " + number)
+            for n in number:
+                self.baresip.sendline(n)
+                sleep(0.3)
+            return
         LOG.info("Sending dtmf tones for " + number)
         dtmf = join(tempfile.gettempdir(), number + ".wav")
         ToneGenerator().dtmf_to_wave(number, dtmf)
@@ -445,7 +472,9 @@ class BareSIP(Thread):
         if "baresip is ready." in out:
             self.handle_ready()
             if not self._login:
-                # registrar-less mode, nothing to wait for
+                # registrar-less mode: ensure a local UA exists, no
+                # registration to wait for
+                self.login()
                 self.ready = True
         elif "account: No SIP accounts found" in out:
             self._handle_no_accounts()
@@ -575,6 +604,10 @@ class BareSIP(Thread):
                     self._prev_output = out
             except pexpect.exceptions.EOF:
                 # baresip exited
+                self.running = False
+            except OSError:
+                # pty file descriptor closed under us (quit() racing the
+                # readline loop)
                 self.running = False
             except pexpect.exceptions.TIMEOUT:
                 # nothing happened for a while
