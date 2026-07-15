@@ -473,16 +473,30 @@ class BareSIP(Thread):
                 if ts != self._ts:
                     self._ts = ts
                     self.handle_call_timestamp(ts)
-        elif "failed to set audio-source (No such device)" in out:
-            error = "failed to set audio-source (No such device)"
-            self.handle_error(error)
+        elif "failed to set audio-source (" in out:
+            # the error reason is interpolated by baresip (errno text),
+            # eg "(No such device)" / "(Function not implemented)"
+            self.handle_error(out[out.index("failed to set audio-source ("):])
         elif "terminated by signal" in out or "ua: stop all" in \
                 out:
             self.running = False
-        elif "received DTMF:" in out:
-            match = re.search(r"received DTMF: '(.)' \(duration=(\d+)\)", out)
+        elif "DTMF" in out:
+            # baresip logs DTMF differently per transport:
+            #   legacy:   received DTMF: '1' (duration=250)
+            #   SIP INFO: call: received SIP INFO DTMF: '1' (duration=250)
+            #   in-band:  received in-band DTMF event: '1' (end=1)
+            match = re.search(
+                r"received (?:SIP INFO )?DTMF: '(.)' \(duration=(\d+)\)", out)
             if match:
                 self.handle_dtmf_received(match.group(1), int(match.group(2)))
+            else:
+                match = re.search(
+                    r"received in-band DTMF event: '(.)' \(end=(\d)\)", out)
+                # only report the event end, to avoid duplicates
+                if match and match.group(2) == "1":
+                    self.handle_dtmf_received(match.group(1), 0)
+                elif not match:
+                    self.handle_unhandled_output(out)
         else:
             self.handle_unhandled_output(out)
 
