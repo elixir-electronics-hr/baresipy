@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0a1](https://github.com/TigreGotico/baresipy/tree/1.1.0a1) (2026-07-16)
+
+[Full Changelog](https://github.com/TigreGotico/baresipy/compare/1.0.0a10...1.1.0a1)
+
+**Merged pull requests:**
+
+- feat: interruptible playback, transfer, caller identity, login retry, TLS/SRTP [\#46](https://github.com/TigreGotico/baresipy/pull/46) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.0.0a10](https://github.com/TigreGotico/baresipy/tree/1.0.0a10) (2026-07-16)
 
 [Full Changelog](https://github.com/TigreGotico/baresipy/compare/1.0.0a9...1.0.0a10)
