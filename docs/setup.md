@@ -77,6 +77,27 @@ If you don't have a SIP account at all, you don't need one — see
 `login_options` lets you append extra SIP URI parameters to the registration line, eg.
 `login_options="transport=tls"`-style flags your provider requires beyond the basics.
 
+### Connecting to a real phone number
+
+To place or receive calls against the public phone network, sign up with a SIP trunk provider (or
+use a SIP account issued by a PBX/business phone system). They will give you the same three
+values baresipy needs: a SIP `user`, a `pwd`, and a `gateway` host - plus, usually, the transport
+they expect (`udp`, `tcp`, or TLS).
+
+For providers that require an encrypted trunk, use `transport="tls"` and point `sip_cafile` at a
+CA bundle to verify the server certificate, optionally combined with `media_encryption="srtp"` to
+encrypt the call audio itself:
+
+```python
+b = BareSIP(user, pwd, gateway, transport="tls",
+            sip_cafile="/etc/ssl/certs/ca-certificates.crt",
+            media_encryption="srtp")
+```
+
+See [examples/secure_trunk.py](../examples/secure_trunk.py) and
+[docs/call-control.md](call-control.md) for the retry/login kwargs useful when a trunk is
+temporarily unreachable.
+
 ## Verifying with a first call
 
 ```python

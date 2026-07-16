@@ -108,6 +108,26 @@ bot = VoiceBot("your_user", "your_password", "your_sip_gateway.example", record_
 Full runnable version with two-way TTS replies: [examples/voice_bot.py](examples/voice_bot.py).
 See [docs/ovos-integration.md](docs/ovos-integration.md) for the complete walkthrough.
 
+## Examples
+
+| Example | Demonstrates |
+|---|---|
+| [examples/scripted_call.py](examples/scripted_call.py) | dial out, speak, send DTMF, hang up |
+| [examples/events.py](examples/events.py) | subclassing `BareSIP` to auto-answer and speak |
+| [examples/voice_bot.py](examples/voice_bot.py) | two-way OVOS STT/TTS voice bot |
+| [examples/voicemail.py](examples/voicemail.py) | voicemail / answering machine, with optional transcription |
+| [examples/call_transfer.py](examples/call_transfer.py) | receptionist-style call transfer |
+| [examples/outbound_campaign.py](examples/outbound_campaign.py) | sequential outbound dialing campaign |
+| [examples/conversational_agent.py](examples/conversational_agent.py) | barge-in voice agent with a pluggable response function |
+| [examples/multi_line.py](examples/multi_line.py) | concurrent multi-line SIP in one process |
+| [examples/secure_trunk.py](examples/secure_trunk.py) | registered account over TLS transport + SRTP media |
+| [examples/gateway_client.py](examples/gateway_client.py) | driving `baresipy-gateway` over HTTP/WebSocket |
+| [examples/contact_list.py](examples/contact_list.py) | local JSON contact store |
+| examples/ivr_menu.py | IVR menu (DTMF-driven call routing) - not yet added, see [docs/call-control.md](docs/call-control.md) for the DTMF primitives it will use |
+
+See [docs/call-control.md](docs/call-control.md) for transfer, DTMF, barge-in, and call-metadata
+details used across these examples.
+
 ## Features
 
 | Feature | How |
@@ -127,6 +147,7 @@ See [docs/ovos-integration.md](docs/ovos-integration.md) for the complete walkth
 
 - [docs/setup.md](docs/setup.md) — system dependencies, install, verifying with a first call, troubleshooting
 - [docs/configuration.md](docs/configuration.md) — config directory, `render_config`, full `BareSIP` constructor reference
+- [docs/call-control.md](docs/call-control.md) — transfer, DTMF, barge-in, call metadata, login retries
 - [docs/direct-calls.md](docs/direct-calls.md) — registrar-less/direct SIP mode
 - [docs/ovos-integration.md](docs/ovos-integration.md) — building a full OVOS voice bot
 - [docs/http-gateway.md](docs/http-gateway.md) — driving baresipy over HTTP/WebSocket via `baresipy-gateway`
