@@ -6,12 +6,14 @@ from pydub import AudioSegment
 import tempfile
 import logging
 import subprocess
+import threading
 from threading import Thread
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 from baresipy.utils.log import LOG
 from baresipy.tts import get_default_tts
 from baresipy.config import render_config, ensure_sndfile_recording
 from baresipy.audio import WavTailReader
+from baresipy.call import CallInfo, parse_sip_uri
 from os.path import expanduser, join, isfile, isdir, getmtime
 from os import makedirs
 from shutil import which
@@ -47,7 +49,27 @@ class BareSIP(Thread):
                  headless: bool = False,
                  audio_driver: str = "alsa,default",
                  record_rx: bool = False,
-                 recording_path: Optional[str] = None):
+                 recording_path: Optional[str] = None,
+                 max_login_retries: int = 0,
+                 login_retry_delay: float = 15.0,
+                 media_encryption: Optional[str] = None,
+                 sip_cafile: Optional[str] = None):
+        """
+        :param max_login_retries: if > 0, retry registration this many
+            times (with `login_retry_delay` seconds between attempts)
+            before giving up and calling `handle_login_failure()` (which
+            quits). 0 (default) preserves the original behaviour of
+            quitting immediately on the first registration failure.
+        :param login_retry_delay: seconds to wait between registration
+            retries, only used when `max_login_retries > 0`.
+        :param media_encryption: one of "srtp"/"srtp-mand"/"srtp-mandf"/
+            "dtls_srtp". If set, appended to the SIP account line as
+            `;mediaenc=<value>` and implies `enable_srtp=True` when
+            rendering the config.
+        :param sip_cafile: path to a CA bundle used to verify the SIP
+            server certificate. Required for real verification when
+            `transport="tls"` is used.
+        """
         config_path = config_path or join("~", ".baresipy")
         self.config_path = expanduser(config_path)
         if not isdir(self.config_path):
@@ -69,8 +91,10 @@ class BareSIP(Thread):
             LOG.info("config loaded from " + self.config_path + "/config")
             self.updated_config = False
         else:
-            self.config = render_config(audio_driver=audio_driver,
-                                         headless=headless)
+            self.config = render_config(
+                audio_driver=audio_driver, headless=headless,
+                sip_cafile=sip_cafile,
+                enable_srtp=bool(media_encryption))
             self.updated_config = True
 
         self._original_config = str(self.config)
@@ -109,12 +133,16 @@ class BareSIP(Thread):
         self.gateway = gateway
         self.transport = transport
         self.tts = tts
+        self.media_encryption = media_encryption
+        self.sip_cafile = sip_cafile
         self._login = None
         if self.gateway:
             self._login = "sip:{u}@{g};transport={t};auth_pass={p}".format(
                 u=self.user, p=self.pwd, g=self.gateway, t=self.transport)
             if login_options:
                 self._login += ";{o}".format(o=login_options)
+            if media_encryption:
+                self._login += ";mediaenc={e}".format(e=media_encryption)
         self._prev_output = ""
         self._local_ua_added = False
         self.running = False
@@ -126,6 +154,12 @@ class BareSIP(Thread):
         self.audio = None
         self._ts = None
         self._block_until_ready = block
+        self._tx_interrupted = False
+        self.current_call_info: Optional[CallInfo] = None
+        self.call_history: List[CallInfo] = []
+        self.max_login_retries = max_login_retries
+        self.login_retry_delay = login_retry_delay
+        self._login_retry_count = 0
         self.baresip = pexpect.spawn(_find_baresip_binary() + ' -f ' + self.config_path)
         super().__init__()
         if autostart:
@@ -204,6 +238,21 @@ class BareSIP(Thread):
             self.do_command("/resume")
         else:
             LOG.error("No active call to resume")
+
+    def transfer(self, uri: str) -> None:
+        """Transfer (blind/attended-lite) the active call to `uri` using
+        baresip's `menu` module dynamic `/transfer` command (SIP REFER)."""
+        if not self.current_call:
+            LOG.error("No active call to transfer")
+            return
+        LOG.info("Transferring call to: " + uri)
+        self.do_command("/transfer " + uri)
+
+    def handle_transfer_ok(self) -> None:
+        LOG.info("Call transfer succeeded")
+
+    def handle_transfer_failed(self, reason: str) -> None:
+        LOG.warning("Call transfer failed: " + reason)
 
     def mute_mic(self) -> None:
         if not self.call_established:
@@ -332,7 +381,7 @@ class BareSIP(Thread):
         ToneGenerator().dtmf_to_wave(number, dtmf)
         self.send_audio(dtmf)
 
-    def speak(self, speech: str) -> None:
+    def speak(self, speech: str, blocking: bool = True) -> None:
         if not self.call_established:
             LOG.error("Speaking without an active call!")
             return
@@ -340,24 +389,65 @@ class BareSIP(Thread):
         if self.tts is None:
             raise RuntimeError(
                 "no TTS configured - pass tts= or install baresipy[ovos]")
-        LOG.info("Sending TTS for " + speech)
-        wav_file = join(tempfile.gettempdir(), "pybaresip_speak.wav")
-        wav_file, phonemes = self.tts.get_tts(speech, wav_file)
-        self.send_audio(wav_file)
+        # dumb sentence split - no NLP, just enough to allow barge-in
+        # between sentences
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", speech)
+                     if s.strip()]
+        if not sentences:
+            return
+        self._tx_interrupted = False
+        for sentence in sentences:
+            if self._tx_interrupted or not self.call_established:
+                self.handle_audio_interrupted()
+                return
+            LOG.info("Sending TTS for " + sentence)
+            wav_file = join(tempfile.gettempdir(), "pybaresip_speak.wav")
+            wav_file, phonemes = self.tts.get_tts(sentence, wav_file)
+            self.send_audio(wav_file, block=blocking)
+            if self._tx_interrupted or not self.call_established:
+                self.handle_audio_interrupted()
+                return
         sleep(0.5)
 
-    def send_audio(self, wav_file: str) -> None:
+    def handle_audio_interrupted(self) -> None:
+        LOG.debug("Audio playback interrupted")
+
+    def stop_audio(self) -> None:
+        """Immediately revert the audio source, interrupting any in-flight
+        `send_audio`/`speak` playback (barge-in)."""
+        LOG.info("Stopping audio playback")
+        self._tx_interrupted = True
+        self.do_command("/ausrc " + self._default_ausrc)
+
+    def send_audio(self, wav_file: str, block: bool = True) -> float:
         if not self.call_established:
             LOG.error("Can't send audio without an active call!")
-            return
+            return 0.0
+        self._tx_interrupted = False
         wav_file, duration = self.convert_audio(wav_file)
         # send audio stream
         LOG.info("transmitting audio")
         self.do_command("/ausrc aufile," + wav_file)
-        # wait till playback ends
-        sleep(duration - 0.5)
-        # avoid baresip exiting
-        self.do_command("/ausrc " + self._default_ausrc)
+        if block:
+            # wait till playback ends, in small steps so a barge-in
+            # (stop_audio) or call drop can cut this short
+            deadline = _time() + max(duration - 0.5, 0)
+            while _time() < deadline:
+                if self._tx_interrupted or not self.call_established:
+                    break
+                sleep(0.1)
+            if not self._tx_interrupted and self.call_established:
+                # avoid baresip exiting
+                self.do_command("/ausrc " + self._default_ausrc)
+        else:
+            timer = threading.Timer(duration, self._revert_audio_source)
+            timer.daemon = True
+            timer.start()
+        return duration
+
+    def _revert_audio_source(self) -> None:
+        if not self._tx_interrupted:
+            self.do_command("/ausrc " + self._default_ausrc)
 
     @staticmethod
     def convert_audio(input_file: str, outfile: Optional[str] = None,
@@ -458,6 +548,20 @@ class BareSIP(Thread):
         LOG.error("Log in failed!")
         self.quit()
 
+    def handle_login_retry(self, attempt: int) -> None:
+        LOG.info(f"Retrying registration (attempt {attempt}/"
+                  f"{self.max_login_retries})")
+
+    def _schedule_login_retry(self) -> None:
+        self._login_retry_count += 1
+        if self._login_retry_count > self.max_login_retries:
+            self.handle_login_failure()
+            return
+        self.handle_login_retry(self._login_retry_count)
+        timer = threading.Timer(self.login_retry_delay, self.login)
+        timer.daemon = True
+        timer.start()
+
     def handle_ready(self) -> None:
         LOG.info("Ready for instructions")
 
@@ -473,6 +577,18 @@ class BareSIP(Thread):
 
     def handle_dtmf_received(self, char: str, duration: int) -> None:
         LOG.info("Received DTMF symbol '{0}' duration={1}".format(char, duration))
+        if self.current_call_info is not None:
+            self.current_call_info.dtmf += char
+
+    def _finalize_call_info(self, reason: Optional[str] = None) -> None:
+        if self.current_call_info is None:
+            return
+        self.current_call_info.ended = _time()
+        self.current_call_info.reason = reason
+        self.call_history.append(self.current_call_info)
+        if len(self.call_history) > 100:
+            self.call_history.pop(0)
+        self.current_call_info = None
 
     def handle_error(self, error: str) -> None:
         LOG.error(error)
@@ -495,18 +611,26 @@ class BareSIP(Thread):
             self._handle_no_accounts()
         elif "All 1 useragent registered successfully!" in out:
             self.ready = True
+            self._login_retry_count = 0
             self.handle_login_success()
         elif "ua: SIP register failed:" in out or \
                 "401 Unauthorized" in out or \
                 "Register: Destination address required" in out or \
                 "Register: Connection timed out" in out:
             self.handle_error(out)
-            self.handle_login_failure()
+            if self.max_login_retries > 0:
+                self._schedule_login_retry()
+            else:
+                self.handle_login_failure()
         elif "Incoming call from: " in out:
             num = out.split("Incoming call from: ")[
                 1].split(" - (press 'a' to accept)")[0].strip()
             self.current_call = num
             self._call_status = "INCOMING"
+            user, host = parse_sip_uri(num)
+            self.current_call_info = CallInfo(
+                uri=num, user=user, host=host, direction="in",
+                started=_time())
             self.handle_incoming_call(num)
         elif "call: rejecting incoming call from " in out:
             num = out.split("rejecting incoming call from ")[1].split(" ")[0].strip()
@@ -519,6 +643,10 @@ class BareSIP(Thread):
         elif "call: connecting to " in out:
             n = out.split("call: connecting to '")[1].split("'")[0]
             self.current_call = n
+            user, host = parse_sip_uri(n)
+            self.current_call_info = CallInfo(
+                uri=n, user=user, host=host, direction="out",
+                started=_time())
             self.handle_call_start()
             status = "OUTGOING"
             self.handle_call_status(status)
@@ -542,6 +670,7 @@ class BareSIP(Thread):
             self._call_status = status
             self.handle_call_timestamp(duration)
             self.mic_muted = False
+            self._finalize_call_info(reason=duration)
         elif "call muted" in out:
             self.mic_muted = True
             self.handle_mic_muted()
@@ -556,6 +685,7 @@ class BareSIP(Thread):
             self._call_status = status
             self.handle_call_ended(reason, number)
             self.mic_muted = False
+            self._finalize_call_info(reason=reason)
         elif "(no active calls)" in out:
             status = "DISCONNECTED"
             self.handle_call_status(status)
@@ -579,6 +709,21 @@ class BareSIP(Thread):
         elif "terminated by signal" in out or "ua: stop all" in \
                 out:
             self.running = False
+        elif "transfer" in out.lower():
+            # baresip (modules/menu/menu.c) has no dedicated "transfer
+            # succeeded" line - success is only implied by the transferee
+            # call reaching ESTABLISHED - so match generously here:
+            #   "menu: transferring call <id> to '<uri>'" -> initiation
+            #       accepted, treated as ok
+            #   anything else containing "transfer" + fail/error -> failed
+            lowered = out.lower()
+            if "fail" in lowered or "error" in lowered:
+                reason = out.strip()
+                self.handle_transfer_failed(reason)
+            elif "transferring call" in lowered:
+                self.handle_transfer_ok()
+            else:
+                self.handle_unhandled_output(out)
         elif "DTMF" in out:
             # baresip logs DTMF differently per transport:
             #   legacy:   received DTMF: '1' (duration=250)
