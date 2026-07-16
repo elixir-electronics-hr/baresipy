@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0a2](https://github.com/TigreGotico/baresipy/tree/1.2.0a2) (2026-07-16)
+
+[Full Changelog](https://github.com/TigreGotico/baresipy/compare/1.2.0a1...1.2.0a2)
+
+**Merged pull requests:**
+
+- docs: user-story examples and call-control documentation [\#50](https://github.com/TigreGotico/baresipy/pull/50) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.2.0a1](https://github.com/TigreGotico/baresipy/tree/1.2.0a1) (2026-07-16)
 
 [Full Changelog](https://github.com/TigreGotico/baresipy/compare/1.1.0a1...1.2.0a1)
