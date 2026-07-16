@@ -75,3 +75,6 @@ BareSIP(
 `ContactList(database_name="contacts.db", db_dir=None)` (in `baresipy.contacts`) is a separate,
 optional local JSON contact store — not wired into `BareSIP` automatically. `db_dir` defaults to
 `~/.baresip`. See its docstrings / `examples/contact_list.py`.
+
+See also [docs/call-control.md](call-control.md) for `max_login_retries`/`login_retry_delay`,
+`media_encryption`, and `sip_cafile` in action.
