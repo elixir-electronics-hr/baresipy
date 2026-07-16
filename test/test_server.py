@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 import baresipy
+from baresipy.call import CallInfo
 from baresipy.server import GatewayPhone, create_app
 
 
@@ -83,6 +84,37 @@ class TestStatusAndCallControl(unittest.TestCase):
         self.assertEqual(self.client.post("/resume").status_code, 200)
         self.phone.hold.assert_called_once()
         self.phone.resume.assert_called_once()
+
+    def test_transfer_happy(self):
+        self.phone.current_call = "sip:foo@bar"
+        resp = self.client.post("/transfer", json={"uri": "sip:human@example.com"})
+        self.assertEqual(resp.status_code, 200)
+        self.phone.transfer.assert_called_once_with("sip:human@example.com")
+
+    def test_transfer_no_call(self):
+        resp = self.client.post("/transfer", json={"uri": "sip:human@example.com"})
+        self.assertEqual(resp.status_code, 409)
+
+    def test_stop_audio(self):
+        resp = self.client.post("/stop_audio")
+        self.assertEqual(resp.status_code, 200)
+        self.phone.stop_audio.assert_called_once()
+
+    def test_calls_returns_history_newest_first(self):
+        older = CallInfo(uri="sip:a@b", user="a", host="b", direction="in",
+                          started=1.0, ended=2.0, reason="200")
+        newer = CallInfo(uri="sip:c@d", user="c", host="d", direction="out",
+                          started=3.0, ended=4.0, reason="200")
+        newer.call_id = "abc123"
+        self.phone.call_history = [older, newer]
+        resp = self.client.get("/calls")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(len(body), 2)
+        self.assertEqual(body[0]["uri"], "sip:c@d")
+        self.assertEqual(body[0]["call_id"], "abc123")
+        self.assertEqual(body[1]["uri"], "sip:a@b")
+        self.assertIsNone(body[1]["call_id"])
 
 
 class TestSpeakDtmfAudio(unittest.TestCase):
@@ -186,6 +218,22 @@ class TestEventsWebsocket(unittest.TestCase):
         with patch.object(gp, "accept_call") as accept:
             gp.handle_incoming_call("sip:caller@x")
             accept.assert_not_called()
+
+    def test_events_carry_call_id(self):
+        gp = make_gateway_phone(auto_answer=False)
+        gp.handle_incoming_call("sip:caller@x")
+        call_id = gp._call_id
+        self.assertIsNotNone(call_id)
+        gp.handle_call_established()
+        event = gp.backlog[-1]
+        self.assertEqual(event["data"]["call_id"], call_id)
+
+    def test_call_id_cleared_after_call_ended(self):
+        gp = make_gateway_phone(auto_answer=False)
+        gp.handle_incoming_call("sip:caller@x")
+        self.assertIsNotNone(gp._call_id)
+        gp.handle_call_ended("bye", "sip:caller@x")
+        self.assertIsNone(gp._call_id)
 
 
 class FakeRxStream:

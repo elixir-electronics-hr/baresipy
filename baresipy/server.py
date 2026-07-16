@@ -9,7 +9,9 @@ import asyncio
 import os
 import tempfile
 import time
+import uuid
 from collections import deque
+from dataclasses import asdict
 from os.path import isfile
 from typing import Any, Deque, Dict, List, Optional
 
@@ -42,13 +44,16 @@ class GatewayPhone(BareSIP):
         self._loop = loop
         self._events: Deque[Dict[str, Any]] = deque(maxlen=_EVENT_BACKLOG)
         self._subscribers: List[asyncio.Queue] = []
+        self._call_id: Optional[str] = None
         super().__init__(*args, **kwargs)
 
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
 
     def _emit(self, event: str, data: Optional[dict] = None) -> None:
-        payload = {"event": event, "data": data or {}, "ts": time.time()}
+        data = dict(data or {})
+        data.setdefault("call_id", self._call_id)
+        payload = {"event": event, "data": data, "ts": time.time()}
         self._events.append(payload)
         loop = self._loop
         for q in list(self._subscribers):
@@ -73,19 +78,31 @@ class GatewayPhone(BareSIP):
     def backlog(self) -> List[Dict[str, Any]]:
         return list(self._events)
 
+    def _new_call_id(self) -> str:
+        self._call_id = uuid.uuid4().hex
+        if self.current_call_info is not None:
+            self.current_call_info.call_id = self._call_id
+        return self._call_id
+
     # hooks
     def handle_incoming_call(self, number: str) -> None:
+        self._new_call_id()
         self._emit("incoming_call", {"number": number})
         if self.auto_answer:
             self.accept_call()
+
+    def handle_call_start(self) -> None:
+        self._new_call_id()
 
     def handle_call_established(self) -> None:
         self._emit("call_established", {"number": self.current_call})
 
     def handle_call_ended(self, reason: str, number: Optional[str] = None) -> None:
         self._emit("call_ended", {"reason": reason, "number": number})
+        self._call_id = None
 
     def handle_dtmf_received(self, char: str, duration: int) -> None:
+        super().handle_dtmf_received(char, duration)
         self._emit("dtmf_received", {"char": char, "duration": duration})
 
     def handle_login_success(self) -> None:
@@ -96,6 +113,10 @@ class GatewayPhone(BareSIP):
 
 
 class CallRequest(BaseModel):
+    uri: str
+
+
+class TransferRequest(BaseModel):
     uri: str
 
 
@@ -184,6 +205,31 @@ def create_app(phone: Optional[BareSIP] = None, *,
             raise _no_call()
         await asyncio.to_thread(phone.resume)
         return {"ok": True}
+
+    @app.post("/transfer", dependencies=[Depends(check_auth)])
+    async def post_transfer(req: TransferRequest, phone: BareSIP = Depends(get_phone)):
+        if not phone.current_call:
+            raise _no_call()
+        await asyncio.to_thread(phone.transfer, req.uri)
+        return {"ok": True}
+
+    @app.post("/stop_audio", dependencies=[Depends(check_auth)])
+    async def post_stop_audio(phone: BareSIP = Depends(get_phone)):
+        await asyncio.to_thread(phone.stop_audio)
+        return {"ok": True}
+
+    @app.get("/calls", dependencies=[Depends(check_auth)])
+    async def get_calls(phone: BareSIP = Depends(get_phone)):
+        history = list(getattr(phone, "call_history", []) or [])
+        out = []
+        for info in reversed(history):
+            try:
+                item = asdict(info)
+            except TypeError:
+                item = dict(getattr(info, "__dict__", {}))
+            item.setdefault("call_id", getattr(info, "call_id", None))
+            out.append(item)
+        return out
 
     @app.post("/speak", dependencies=[Depends(check_auth)])
     async def post_speak(req: SpeakRequest, phone: BareSIP = Depends(get_phone)):

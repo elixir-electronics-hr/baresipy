@@ -162,3 +162,35 @@ asyncio.run(consume_audio())
 
 See also [examples/gateway_client.py](../examples/gateway_client.py) for a runnable script that
 places a call over REST and prints `/ws/events` as they arrive.
+
+## Gateway v2 additions
+
+New endpoints added on top of the table above:
+
+| method | path | body | responses |
+|---|---|---|---|
+| POST | `/transfer` | `{"uri": "sip:..."}` | `200 {"ok": true}` · `409` no active call |
+| POST | `/stop_audio` | — | `200 {"ok": true}` |
+| GET | `/calls` | — | `200` list of finished/current call records, newest first |
+
+`/transfer` blind-transfers the active call via `BareSIP.transfer` (SIP REFER, `menu` module).
+
+`/stop_audio` interrupts any in-flight `/speak` or `/audio` playback immediately (barge-in),
+calling `BareSIP.stop_audio`. Safe to call with no active call.
+
+`/calls` returns `phone.call_history` serialized as JSON objects (one per finished call, plus the
+current in-progress call if any), each with `uri`, `user`, `host`, `direction`, `started`, `ended`,
+`reason`, `dtmf`, and `call_id`.
+
+`GatewayPhone` now assigns a `call_id` (a `uuid4` hex string) per call, generated when a call
+starts (incoming or outgoing) and included as `"call_id"` in every `/ws/events` payload's `data`
+for that call, so a client can group events belonging to the same call together.
+
+```bash
+curl -s -X POST http://localhost:8000/transfer -H 'content-type: application/json' \
+    -d '{"uri": "sip:human@example.com"}'
+
+curl -s -X POST http://localhost:8000/stop_audio
+
+curl -s http://localhost:8000/calls
+```
