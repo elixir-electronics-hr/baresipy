@@ -251,7 +251,9 @@ def render_config(audio_driver: str = "alsa,default",
                    headless: bool = False,
                    audio_path: Optional[str] = None,
                    enable_sndfile: bool = False,
-                   snd_path: Optional[str] = None) -> str:
+                   snd_path: Optional[str] = None,
+                   sip_cafile: Optional[str] = None,
+                   enable_srtp: bool = False) -> str:
     """Render a baresip config file from the DEFAULT template.
 
     :param audio_driver: value passed to `audio_source`/`audio_player`/
@@ -266,6 +268,10 @@ def render_config(audio_driver: str = "alsa,default",
         baresip records call audio (rx/tx wav files) into `snd_path`
     :param snd_path: directory to write call recordings into, required if
         `enable_sndfile` is True
+    :param sip_cafile: if set, points `sip_cafile` at this path, so baresip
+        can verify the server certificate when `transport="tls"` is used
+    :param enable_srtp: if True, load the `srtp.so` module so SRTP media
+        encryption is available (see `media_encryption` on `BareSIP`)
     """
     config = DEFAULT
 
@@ -309,5 +315,17 @@ def render_config(audio_driver: str = "alsa,default",
         if not snd_path:
             raise ValueError("snd_path is required when enable_sndfile=True")
         config = ensure_sndfile_recording(config, snd_path)
+
+    if sip_cafile:
+        if "#sip_certificate	cert.pem" in config:
+            config = config.replace(
+                "#sip_certificate	cert.pem",
+                "#sip_certificate	cert.pem\nsip_cafile\t\t" + sip_cafile)
+        else:
+            config += "\nsip_cafile\t\t" + sip_cafile + "\n"
+
+    if enable_srtp:
+        config = config.replace(
+            "#module			srtp.so", "module			srtp.so")
 
     return config

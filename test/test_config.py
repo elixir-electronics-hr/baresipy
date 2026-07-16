@@ -67,5 +67,24 @@ class TestRenderConfigSndfile(unittest.TestCase):
             render_config(enable_sndfile=True)
 
 
+class TestRenderConfigTlsSrtp(unittest.TestCase):
+    def test_sip_cafile_none_leaves_config_unchanged(self):
+        config = render_config()
+        self.assertNotIn("sip_cafile", config)
+
+    def test_sip_cafile_set(self):
+        config = render_config(sip_cafile="/etc/ssl/ca.pem")
+        self.assertIn("sip_cafile\t\t/etc/ssl/ca.pem", config)
+
+    def test_srtp_disabled_by_default(self):
+        config = render_config()
+        self.assertIn("#module\t\t\tsrtp.so", config)
+
+    def test_srtp_enabled(self):
+        config = render_config(enable_srtp=True)
+        self.assertIn("module\t\t\tsrtp.so", config)
+        self.assertNotIn("#module\t\t\tsrtp.so", config)
+
+
 if __name__ == "__main__":
     unittest.main()
