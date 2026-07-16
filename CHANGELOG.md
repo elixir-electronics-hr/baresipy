@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0a1](https://github.com/TigreGotico/baresipy/tree/1.2.0a1) (2026-07-16)
+
+[Full Changelog](https://github.com/TigreGotico/baresipy/compare/1.1.0a1...1.2.0a1)
+
+**Merged pull requests:**
+
+- feat: declarative IVR menus and gateway v2 \(transfer, barge-in, call history\) [\#48](https://github.com/TigreGotico/baresipy/pull/48) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.1.0a1](https://github.com/TigreGotico/baresipy/tree/1.1.0a1) (2026-07-16)
 
 [Full Changelog](https://github.com/TigreGotico/baresipy/compare/1.0.0a10...1.1.0a1)
