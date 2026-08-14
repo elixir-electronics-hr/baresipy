@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.1a1](https://github.com/TigreGotico/baresipy/tree/1.2.1a1) (2026-08-14)
+
+[Full Changelog](https://github.com/TigreGotico/baresipy/compare/1.2.0a3...1.2.1a1)
+
+**Merged pull requests:**
+
+- fix: make sndfile recording config patch whitespace-tolerant and non-silent [\#56](https://github.com/TigreGotico/baresipy/pull/56) ([JarbasAl](https://github.com/JarbasAl))
+- feat: configurable playback frame rate and channels [\#54](https://github.com/TigreGotico/baresipy/pull/54) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.2.0a3](https://github.com/TigreGotico/baresipy/tree/1.2.0a3) (2026-07-30)
 
 [Full Changelog](https://github.com/TigreGotico/baresipy/compare/1.2.0a2...1.2.0a3)
