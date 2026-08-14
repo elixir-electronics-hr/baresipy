@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.2a1](https://github.com/TigreGotico/baresipy/tree/1.2.2a1) (2026-08-14)
+
+[Full Changelog](https://github.com/TigreGotico/baresipy/compare/1.2.1a1...1.2.2a1)
+
+**Merged pull requests:**
+
+- fix: surface all audio-source failures via overridable hook [\#55](https://github.com/TigreGotico/baresipy/pull/55) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.2.1a1](https://github.com/TigreGotico/baresipy/tree/1.2.1a1) (2026-08-14)
 
 [Full Changelog](https://github.com/TigreGotico/baresipy/compare/1.2.0a3...1.2.1a1)
