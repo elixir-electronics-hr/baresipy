@@ -102,6 +102,22 @@ class BareSIP(Thread):
             LOG.info("config loaded from " + self.config_path + "/config")
             self.updated_config = False
         else:
+            # baresipy's bundled template is still shaped for a much older
+            # baresip: jitter_buffer_delay, zrtp.so, and module_path pointing at
+            # the apt location /usr/lib/baresip/modules. On an Elixir device,
+            # where baresip is built from source and installs its modules under
+            # /usr/local, a config written from it loads no modules at all - so
+            # the phone comes up with no codecs and no audio driver, and nothing
+            # in the log says why.
+            #
+            # This should never be reached: configserv writes this file, and
+            # has baresip write itself a fresh one first if there is none. If it
+            # IS reached, the missing config is the thing to fix.
+            LOG.error(
+                "No config at %s - falling back to baresipy's bundled template, "
+                "which targets an older baresip. Save the settings once from "
+                "configserv to have the real config written.",
+                join(self.config_path, "config"))
             self.config = render_config(
                 audio_driver=audio_driver, headless=headless,
                 sip_cafile=sip_cafile,
